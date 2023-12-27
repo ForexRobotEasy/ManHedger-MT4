@@ -1,0 +1,124 @@
+
+// ManHedger MT4 Expert Advisor
+// Developer's site: forexroboteasy.com
+// Developer: Forex Robot Easy Team
+
+// Include necessary libraries and functions
+#include <Trade/Trade.mqh>
+#include <Math/Math.mqh>
+#include <Timeseries/TimeSeries.mqh>
+
+// Define constants
+#define GRID_SIZE 10
+#define GRID_DISTANCE 50
+#define HEDGE_MULTIPLIER 1.5
+#define STOP_LOSS_PERCENT 1.0
+#define TAKE_PROFIT_PERCENT 2.0
+
+// Define global variables
+CTrade Trade;
+CTimeSeries Series;
+
+// Define structure for storing trade information
+struct STradeInfo
+{
+   double openPrice;
+   double stopLoss;
+   double takeProfit;
+};
+
+// Define array for storing trade information
+STradeInfo trades[];
+int tradeCount;
+
+// Initialize the Expert Advisor
+int OnInit()
+{
+   // Set trade slippage
+   Trade.SetSlippage(10);
+
+   // Set trade deviation
+   Trade.SetDeviation(5);
+
+   return(INIT_SUCCEEDED);
+}
+
+// Execute trading logic
+void OnTick()
+{
+   // Check for new trades
+   if (tradeCount == 0)
+   {
+      // Determine the current market state
+      double marketState = Series.Close(0) - Series.Close(1);
+
+      // Check if market is trending upwards
+      if (marketState > 0)
+      {
+         // Open buy trades
+         for (int i = 0; i < GRID_SIZE; i++)
+         {
+            double entryPrice = Series.Close(0) + GRID_DISTANCE * (i + 1);
+            double stopLoss = entryPrice - (entryPrice * STOP_LOSS_PERCENT / 100);
+            double takeProfit = entryPrice + (entryPrice * TAKE_PROFIT_PERCENT / 100);
+
+            // Place buy order
+            if (Trade.Buy(entryPrice, 0.1, stopLoss, takeProfit))
+            {
+               STradeInfo tradeInfo;
+               tradeInfo.openPrice = entryPrice;
+               tradeInfo.stopLoss = stopLoss;
+               tradeInfo.takeProfit = takeProfit;
+
+               trades[tradeCount] = tradeInfo;
+               tradeCount++;
+            }
+         }
+      }
+      // Check if market is trending downwards
+      else if (marketState < 0)
+      {
+         // Open sell trades
+         for (int i = 0; i < GRID_SIZE; i++)
+         {
+            double entryPrice = Series.Close(0) - GRID_DISTANCE * (i + 1);
+            double stopLoss = entryPrice + (entryPrice * STOP_LOSS_PERCENT / 100);
+            double takeProfit = entryPrice - (entryPrice * TAKE_PROFIT_PERCENT / 100);
+
+            // Place sell order
+            if (Trade.Sell(entryPrice, 0.1, stopLoss, takeProfit))
+            {
+               STradeInfo tradeInfo;
+               tradeInfo.openPrice = entryPrice;
+               tradeInfo.stopLoss = stopLoss;
+               tradeInfo.takeProfit = takeProfit;
+
+               trades[tradeCount] = tradeInfo;
+               tradeCount++;
+            }
+         }
+      }
+   }
+
+   // Check for existing trades
+   for (int i = 0; i < tradeCount; i++)
+   {
+      // Check if trade has reached stop loss or take profit
+      if (Trade.PositionSelect(trades[i].openPrice) && (Trade.PositionStopLoss() != trades[i].stopLoss || Trade.PositionTakeProfit() != trades[i].takeProfit))
+      {
+         // Modify stop loss and take profit levels
+         Trade.PositionModify(trades[i].openPrice, trades[i].stopLoss, trades[i].takeProfit);
+      }
+   }
+}
+
+// Clean up resources
+void OnDeinit(const int reason)
+{
+   // Close all open trades
+   Trade.PositionCloseAll();
+
+   // Reset trade array and count
+   ArrayResize(trades, 0);
+   tradeCount = 0;
+}
